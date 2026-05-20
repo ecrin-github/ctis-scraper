@@ -1,6 +1,8 @@
 import json
 from typing import Iterator, Tuple, Final
 from dataclasses import dataclass
+from requests import exceptions
+import time
 
 import requests
 import yaml
@@ -48,20 +50,34 @@ def get_trial_overview() -> Iterator[TrialOverview]:
 
     while next_page_available:
         payload["pagination"]["page"] = page
-        r = requests.post(
-            OVERVIEW_URL, headers=OVERVIEW_HEADERS, data=json.dumps(payload)
-        )
-        json_data = validate_response(r)
-        for trial in json_data["data"]:
-            trial_overview = from_dict(
-                data=trial,
-                data_class=TrialOverview,
-                config=Config(check_types=False, strict=True),
-            )
-            yield trial_overview
 
-        page += 1
-        next_page_available = json_data["pagination"]["nextPage"]
+        initial_retry_delay = 30
+        got_trial_data = False
+        retry_delay = initial_retry_delay
+
+        while not got_trial_data and retry_delay <= 120:
+            try:
+                r = requests.post(
+                    OVERVIEW_URL, headers=OVERVIEW_HEADERS, data=json.dumps(payload)
+                )
+                json_data = validate_response(r)
+            except exceptions.HTTPError as e:
+                print("HTTP Error, retrying after " + str(retry_delay) + " seconds")
+                time.sleep(retry_delay)
+                retry_delay = retry_delay * 2
+                continue
+
+            for trial in json_data["data"]:
+                trial_overview = from_dict(
+                    data=trial,
+                    data_class=TrialOverview,
+                    config=Config(check_types=False, strict=True),
+                )
+                yield trial_overview
+
+            page += 1
+            next_page_available = json_data["pagination"]["nextPage"]
+            got_trial_data = True
 
 
 def get_total_trial_records() -> int:
@@ -96,6 +112,23 @@ def get_full_trial(ct_number: str) -> FullTrial:
         config=Config(check_types=False, strict=False),
     )
     return full_trial
+
+
+def get_full_trial_raw(ct_number: str) -> dict:
+    """
+    Requests the trial details api endpoint to get trial details of a single trial and returns the raw JSON response.
+
+    Parameter:
+    - ct_number: The ct number identifier of a trial listed in the ctis portal.
+
+    Returns:
+    - json_data: The single trial JSON data
+    """
+    full_trial_url = f"https://euclinicaltrials.eu/ctis-public-api/retrieve/{ct_number}"
+    r = requests.get(full_trial_url)
+    json_data = validate_response(r)
+
+    return json_data
 
 
 def get_location_coordinates(

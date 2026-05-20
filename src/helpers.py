@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 from src.log import logger
 from src.parse import SponsorDuty
 
+DEFAULT_DATA_DIR = "/home/ubuntu/data/ctis"
+
 
 def get_db_uri() -> str:
     """
@@ -34,6 +36,22 @@ def get_db_uri() -> str:
             f"Wrong environment configuration ({environment}). Choose either 'dev' or 'prod'"
         )
     return database_uri
+
+
+def get_data_dir() -> str:
+    """
+    Checks environment file for data directory (to save CTIS JSON file) or use default path.
+
+    Returns:
+    - Path to data directory
+    """
+
+    data_dir = os.getenv("DATA_DIR")
+
+    if data_dir is None or data_dir == "":
+        data_dir = DEFAULT_DATA_DIR
+
+    return data_dir
 
 
 def timestamp_to_date(timestamp: str) -> datetime.date:

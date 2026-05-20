@@ -1,5 +1,8 @@
-import time
 from datetime import datetime
+import json
+import os
+from requests import exceptions
+import time
 from typing import TypeVar, cast, List, Final, Dict, Type
 
 import yaml
@@ -37,8 +40,8 @@ from src.api import (
     get_total_trial_records,
     get_trial_overview,
     get_full_trial,
+    get_full_trial_raw,
 )
-
 
 with open("decodings.yaml", "r") as file:
     DECODINGS = yaml.safe_load(file)
@@ -571,3 +574,58 @@ def scrape_ctis(database_uri: str) -> None:
 
     finally:
         session.close()
+
+
+def scrape_ctis_to_file(data_dir: str) -> None:
+    """
+    Wraps the entire data scraping, parsing and writing to JSON file process into a single function.
+    """
+
+    start_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    total_trial_records = get_total_trial_records()
+
+    if not os.path.exists(data_dir):
+        raise FileNotFoundError("Couldn't find data directory: " + data_dir)
+    if not os.path.isdir(data_dir):
+        raise NotADirectoryError("Data dir path is not a directory: " + data_dir)
+
+    filename = start_timestamp + "_" + "CTIS_trials.json"
+    filepath = os.path.join(data_dir, filename)
+
+    try:
+        fp = open(filepath, "w")
+        fp.write("[\n")
+
+        first_record = True
+        initial_retry_delay = 30
+
+        for trial_overview in tqdm(get_trial_overview(), total=total_trial_records):
+            got_trial_data = False
+            retry_delay = initial_retry_delay
+
+            while not got_trial_data and retry_delay <= 120:
+                try:
+                    full_trial = get_full_trial_raw(trial_overview.ctNumber)
+                except exceptions.HTTPError as e:
+                    print("HTTP Error, retrying after " + str(retry_delay) + " seconds")
+                    time.sleep(retry_delay)
+                    retry_delay = retry_delay * 2
+                    continue
+
+                if full_trial:
+                    trial_json = json.dumps(full_trial, ensure_ascii=False)
+
+                    if first_record:
+                        first_record = False
+                        fp.write(trial_json)
+                    else:
+                        fp.write(",\n" + trial_json)
+                else:
+                    print("Warning: found an empty trial")
+
+                got_trial_data = True
+    except Exception as e:
+        raise e
+    finally:
+        fp.write("\n]")
+        fp.close()
