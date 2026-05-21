@@ -3,6 +3,8 @@
 ## Description
 This project is a Python-based web scraper that uses the European Clinical Trials Information System's (CTIS) internal API to gather data. The collected data is then transformed and saved in a PostgreSQL database using SQLAlchemy or saved to a JSON file. 
 
+**Important note**: currently, only the `download-all-json` mode (see [Run the project](#run-the-project)) allows getting all trials from CTIS. All other modes use the search API to get trial IDs, but the search API seems to be limited to 10000 trials. `download-all-json` uses the download API to download all trials to CSV and then fetch JSON records from the CSV file instead.
+
 ## Features
 - Web scraping using the website's internal API
 - Data transformation
@@ -51,7 +53,7 @@ DATABASE_URI="postgresql+psycopg2://username:password@db_ip:db_port/db_name"
 
 #### Run the Project
 ```bash
-python main.py [scrape/scrape-to-file]
+python main.py [scrape/scrape-to-file/download-all-json]
 ```
 
 ### Running the Project with Docker
