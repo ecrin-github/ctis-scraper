@@ -645,7 +645,6 @@ def download_all_trials_json(data_dir: str) -> None:
     - data_dir: Path to directory where to download the CSV file and write the JSON file
     """
 
-    start_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     total_trial_records = get_total_trial_records()
 
     if not os.path.exists(data_dir):
@@ -656,6 +655,7 @@ def download_all_trials_json(data_dir: str) -> None:
     # Download CSV file with all trials
     csv_path = download_all_trials(data_dir)
 
+    start_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     filename = start_timestamp + "_" + "CTIS_trials.json"
     filepath = os.path.join(data_dir, filename)
 
