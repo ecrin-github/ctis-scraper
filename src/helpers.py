@@ -54,6 +54,17 @@ def get_data_dir() -> str:
     return data_dir
 
 
+def download_file(url, filename) -> None:
+    """
+    Downloads file from url to filename.
+    """
+    r = requests.get(url)
+
+    with open(filename, "wb") as f:
+        for chunk in r.iter_content(chunk_size=512 * 1024):
+            f.write(chunk)
+
+
 def timestamp_to_date(timestamp: str) -> datetime.date:
     """
     Converts a timestamp in the format 'YYYY-MM-DDTHH:MM:SS' or 'YYYY-MM-DDTHH:MM:SS.SSS'

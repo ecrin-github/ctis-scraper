@@ -1,4 +1,7 @@
+import copy
+from datetime import datetime
 import json
+import os
 from typing import Iterator, Tuple, Final
 from dataclasses import dataclass
 from requests import exceptions
@@ -9,11 +12,16 @@ import yaml
 from dacite import from_dict, Config
 
 from src.log import logger
-from src.helpers import validate_response
+from src.helpers import download_file, validate_response
 from src.parse import TrialOverview, FullTrial
 
 with open("config.yaml", "r") as file:
     config = yaml.safe_load(file)
+
+SEARCH_CRITERIA_PAYLOAD: dict = config["api"]["overview"]["payload"]["searchCriteria"]
+DOWNLOAD_URL: Final[str] = "https://euclinicaltrials.eu/ctis-public-api/search/download"
+DOWNLOAD_STATUS_IN_PROGRESS: Final[str] = "In progress"
+DOWNLOAD_STATUS_DONE: Final[str] = "Done"
 
 OVERVIEW_PAYLOAD: dict = config["api"]["overview"]["payload"]
 OVERVIEW_URL: Final[str] = "https://euclinicaltrials.eu/ctis-public-api/search"
@@ -78,6 +86,74 @@ def get_trial_overview() -> Iterator[TrialOverview]:
             page += 1
             next_page_available = json_data["pagination"]["nextPage"]
             got_trial_data = True
+
+
+def download_all_trials(data_dir: str) -> str:
+    """
+    Downloads a CSV file containing all CTIS trials (as one would by clicking the "Download results" button on the website).
+
+    Parameter:
+    - data_dir: Path to directory where to download the JSON file
+
+    Returns:
+    - csv_path: Downloaded CSV file path
+    """
+    total_records_number = get_total_trial_records()
+    payload = {
+        "strategy": {"size": total_records_number, "type": "All"},
+        "searchCriteria": copy.copy(SEARCH_CRITERIA_PAYLOAD),
+    }
+
+    # Starting download
+    print("Starting CSV download task")
+    r = requests.post(DOWNLOAD_URL, headers=OVERVIEW_HEADERS, data=json.dumps(payload))
+    json_data = validate_response(r)
+
+    if not "taskId" in json_data:
+        raise Exception("Failed to download all CSV trials")
+
+    download_check_freq = 2
+    file_location = ""
+
+    task_id = json_data["taskId"]
+
+    # Checking API at regular intervals until task is finished and we have a download link
+    while not file_location:
+        time.sleep(download_check_freq)
+
+        r = requests.get(f"{DOWNLOAD_URL}/{task_id}")
+        json_data = validate_response(r)
+
+        status = json_data["status"]
+        if status != DOWNLOAD_STATUS_IN_PROGRESS and status != DOWNLOAD_STATUS_DONE:
+            raise ValueError(f"Unexpected download status value: {status}")
+
+        file_location = json_data["file_location"]  # Empty or download link
+
+    print("CSV Download task finished!")
+
+    file_location = file_location.strip()
+    if file_location[0] == '"':
+        file_location = file_location[1:]
+    if file_location[-1] == '"':
+        file_location = file_location[:-1]
+
+    print(f"CSV File to download: {file_location}")
+
+    start_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    csv_filename = f"{start_timestamp}_trials.csv"
+
+    print("Downloading CSV file")
+
+    csv_path = os.path.join(data_dir, csv_filename)
+    download_file(file_location, csv_path)
+
+    print(f"CSV File downloaded to {csv_path}")
+
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Couldn't find downloaded CSV file: {csv_path}")
+
+    return csv_path
 
 
 def get_total_trial_records() -> int:

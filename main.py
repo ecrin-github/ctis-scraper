@@ -2,6 +2,7 @@ import argparse
 import logging
 from src.helpers import get_db_uri, get_data_dir
 from src.crud import (
+    download_all_trials_json,
     scrape_ctis,
     scrape_ctis_to_file,
     update_location_coordinates,
@@ -12,7 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description="ctis-scraper")
     parser.add_argument(
         "mode",
-        choices=["scrape", "scrape-to-file", "update_coordinates"],
+        choices=["scrape", "scrape-to-file", "download-all-json", "update_coordinates"],
         help="Mode of operation: 'scrape' or 'update_coordinates'",
     )
     args = parser.parse_args()
@@ -24,6 +25,8 @@ def main():
 
     if args.mode == "scrape-to-file":
         scrape_ctis_to_file(DATA_DIR)
+    elif args.mode == "download-all-json":
+        download_all_trials_json(DATA_DIR)
     elif args.mode == "scrape":
         scrape_ctis(DATABASE_URI)
     elif args.mode == "update_coordinates":

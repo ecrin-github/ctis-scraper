@@ -1,3 +1,4 @@
+import csv
 from datetime import datetime
 import json
 import os
@@ -36,6 +37,7 @@ from src.log import logger
 from src.parse import TrialOverview, FullTrial
 from src.helpers import timestamp_to_date, country_to_iso_codes, decode_third_party_duty
 from src.api import (
+    download_all_trials,
     get_location_coordinates,
     get_total_trial_records,
     get_trial_overview,
@@ -579,6 +581,9 @@ def scrape_ctis(database_uri: str) -> None:
 def scrape_ctis_to_file(data_dir: str) -> None:
     """
     Wraps the entire data scraping, parsing and writing to JSON file process into a single function.
+
+    Parameter:
+    - data_dir: Path to directory where to write the JSON file
     """
 
     start_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -624,6 +629,84 @@ def scrape_ctis_to_file(data_dir: str) -> None:
                     print("Warning: found an empty trial")
 
                 got_trial_data = True
+    except Exception as e:
+        raise e
+    finally:
+        fp.write("\n]")
+        fp.close()
+
+
+def download_all_trials_json(data_dir: str) -> None:
+    """
+    Download all CTIS trials in CSV format using the download API,
+    then fetch JSON record individually for each trial ID of the downloaded CSV file and write them to a JSON file.
+
+    Parameter:
+    - data_dir: Path to directory where to download the CSV file and write the JSON file
+    """
+
+    start_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    total_trial_records = get_total_trial_records()
+
+    if not os.path.exists(data_dir):
+        raise FileNotFoundError("Couldn't find data directory: " + data_dir)
+    if not os.path.isdir(data_dir):
+        raise NotADirectoryError("Data dir path is not a directory: " + data_dir)
+
+    # Download CSV file with all trials
+    csv_path = download_all_trials(data_dir)
+
+    filename = start_timestamp + "_" + "CTIS_trials.json"
+    filepath = os.path.join(data_dir, filename)
+
+    try:
+        fp = open(filepath, "w")
+        fp.write("[\n")
+
+        # Parse CSV and get individual JSON records
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+
+            header_row = True
+            first_record = True
+            initial_retry_delay = 30
+
+            print(
+                f"Starting individual JSON records fetching for {total_trial_records} trials"
+            )
+
+            for row in tqdm(reader, total=total_trial_records):
+                if header_row:  # Skipping header
+                    header_row = False
+                else:
+                    got_trial_data = False
+                    retry_delay = initial_retry_delay
+
+                    trial_id = row[0].strip()
+
+                    while not got_trial_data and retry_delay <= 120:
+                        try:
+                            full_trial = get_full_trial_raw(trial_id)
+                        except exceptions.HTTPError as e:
+                            print(
+                                f"HTTP Error, retrying after {str(retry_delay)} seconds"
+                            )
+                            time.sleep(retry_delay)
+                            retry_delay = retry_delay * 2
+                            continue
+
+                        if full_trial:
+                            trial_json = json.dumps(full_trial, ensure_ascii=False)
+
+                            if first_record:  # No comma + newline for first record
+                                first_record = False
+                                fp.write(trial_json)
+                            else:
+                                fp.write(",\n" + trial_json)
+                        else:
+                            print("Warning: found an empty trial")
+
+                        got_trial_data = True
     except Exception as e:
         raise e
     finally:
